@@ -3,16 +3,40 @@ const { MongoClient } = require('mongodb');
 require('dotenv').config();
 const cors = require('cors');
 
+var admin = require("firebase-admin");
+
+
 const app = express();
-const port = process.env.PORT || 2000;
+const port = process.env.PORT || 4000;
 
 // middleware
 app.use(cors());
 app.use(express.json());
 
+// firebase admin initizalization 
+var serviceAccount = require("./ema-john-12a7a-firebase-adminsdk-1yfje-79b28673fb.json");
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+  
+
+async function verifyToken(req, res, next){
+    if(req.headers?.authorization?.startsWith('Bearer ')){
+        const idToken  = req.headers.authorization.split('Bearer ')[1]
+        try{
+            const decodeUser = await admin.auth().verifyIdToken(idToken);
+            req.decodeUserEmail = decodeUser.email;
+        }
+        catch{
+
+        }
+        
+    }
+    next()
+}
+
 const uri = `mongodb+srv://${process.env.DB_PASS}:${process.env.DB_USER}@cluster0.qvlwz.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-
 async function run() {
     try {
         await client.connect();
@@ -51,13 +75,30 @@ async function run() {
         res.json(product)
     }) 
 
-    // Add order api
-    app.post('/products', async (req, res) => {
-        const order = req.body;
-        const result = await productCollection.insertOne(order);
-        res.json('my', result);
-
+     // Get order api
+       app.get('/myOrders', verifyToken, async(req, res) => {
+          
+             const email = req.query.email;
+             if(req.decodeUserEmail === email){
+                const query = {email: email};
+            
+                const cursor = orderCollection.find(query);
+                const result = await cursor.toArray();
+                res.json(result)
+             }
+             else{
+                 res.status(401).json({message:'User not authorize'})
+             }
+            
+            
     })
+
+    app.post('/myOrders', async(req, res) => {
+        const order = req.body;
+        const result = await orderCollection.insertOne(order)
+        res.json(result)
+    })
+
 
 
     }
